@@ -77,12 +77,14 @@ _dispatch_introspection_init(void)
 			_dispatch_introspection_thread_remove);
 	_dispatch_introspection_thread_add(); // add main thread
 
+	//for初始化模版数组内的类型
 	for (size_t i = 0; i < DISPATCH_ROOT_QUEUE_COUNT; i++) {
 		_dispatch_trace_queue_create(&_dispatch_root_queues[i]);
 	}
 #if DISPATCH_USE_MGR_THREAD && DISPATCH_USE_PTHREAD_ROOT_QUEUES
 	_dispatch_trace_queue_create(_dispatch_mgr_q.do_targetq);
 #endif
+	//创建主队列和全局队列
 	_dispatch_trace_queue_create(&_dispatch_main_q);
 	_dispatch_trace_queue_create(&_dispatch_mgr_q);
 }
@@ -933,6 +935,7 @@ _dispatch_introspection_runtime_event(
 		enum dispatch_introspection_runtime_event event,
 		void *ptr, uint64_t value)
 {
+	//异步串行并发过来是worker_request，也就是3
 	if (DISPATCH_INTROSPECTION_HOOK_ENABLED(runtime_event)) {
 		DISPATCH_INTROSPECTION_HOOK_CALLOUT(runtime_event, event, ptr, value);
 	}

@@ -147,6 +147,7 @@ _dispatch_object_alloc(const void *vtable, size_t size)
 	dou._do->do_vtable = vtable;
 	return dou._do;
 #else
+	//objc2
 	return _os_object_alloc_realized(vtable, size);
 #endif
 }

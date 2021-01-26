@@ -61,7 +61,10 @@ dispatch_once_f(dispatch_once_t *val, void *ctxt, dispatch_function_t func)
 		return;
 	}
 #if DISPATCH_ONCE_USE_QUIESCENT_COUNTER
+//  #define DLOCK_FAILED_TRYLOCK_BIT	((dispatch_lock)0x00000002)
+//	(((gen) & 3) == DLOCK_FAILED_TRYLOCK_BIT)
 	if (likely(DISPATCH_ONCE_IS_GEN(v))) {
+//		atomic_store_explicit
 		return _dispatch_once_mark_done_if_quiesced(l, v);
 	}
 #endif

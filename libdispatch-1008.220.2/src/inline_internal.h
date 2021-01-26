@@ -1145,6 +1145,8 @@ _dispatch_queue_init(dispatch_queue_class_t dqu, dispatch_queue_flags_t dqf,
 	dq->dq_state = dq_state;
 	dq->dq_serialnum =
 			os_atomic_inc_orig(&_dispatch_queue_serial_numbers, relaxed);
+	
+	//返回构造后的dqu
 	return dqu;
 }
 #define _dispatch_queue_alloc(name, dqf, w, initial_state_bits) \
@@ -2542,6 +2544,7 @@ _dispatch_continuation_init_f(dispatch_continuation_t dc,
 		dispatch_block_flags_t flags, uintptr_t dc_flags)
 {
 	pthread_priority_t pp = 0;
+	//结构体保存任务
 	dc->dc_flags = dc_flags | DC_FLAG_ALLOCATED;
 	dc->dc_func = f;
 	dc->dc_ctxt = ctxt;
@@ -2589,6 +2592,7 @@ _dispatch_continuation_async(dispatch_queue_class_t dqu,
 #else
 	(void)dc_flags;
 #endif
+	//转移到dq_push，dq_push对应很多方法，看root到就行
 	return dx_push(dqu._dq, dc, qos);
 }
 

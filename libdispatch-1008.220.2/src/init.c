@@ -284,6 +284,8 @@ static struct dispatch_pthread_root_queue_context_s
 
 // 6618342 Contact the team that owns the Instrument DTrace probe before
 //         renaming this symbol
+
+//模版数组
 struct dispatch_queue_global_s _dispatch_root_queues[] = {
 #define _DISPATCH_ROOT_QUEUE_IDX(n, flags) \
 		((flags & DISPATCH_PRIORITY_FLAG_OVERCOMMIT) ? \
@@ -418,6 +420,7 @@ _dispatch_queue_attr_to_info(dispatch_queue_attr_t dqa)
 	
 	dispatch_queue_attr_info_t dqai = { };
 
+	//是串行队列，直接返回空dqai
 	if (!dqa) return dqai;
 
 #if DISPATCH_VARIANT_STATIC
@@ -692,6 +695,8 @@ DISPATCH_VTABLE_SUBCLASS_INSTANCE(queue_global, lane,
 
 	.dq_activate    = _dispatch_queue_no_activate,
 	.dq_wakeup      = _dispatch_root_queue_wakeup,
+								  
+    //看其他的也可以，最终都要到root，所以直接看root
 	.dq_push        = _dispatch_root_queue_push,
 );
 

@@ -880,10 +880,12 @@ dispatch_async_enforce_qos_class_f(dispatch_queue_t dq, void *ctxt,
 void
 dispatch_async(dispatch_queue_t dq, dispatch_block_t work)
 {
+	//获取当前线程中绑定的 queue.
 	dispatch_continuation_t dc = _dispatch_continuation_alloc();
 	uintptr_t dc_flags = DC_FLAG_CONSUME;
 	dispatch_qos_t qos;
 
+	//包装任务并返回对应的优先级
 	qos = _dispatch_continuation_init(dc, dq, work, 0, dc_flags);
 	_dispatch_continuation_async(dq, dc, qos, dc->dc_flags);
 }
@@ -1744,10 +1746,11 @@ _dispatch_barrier_sync_f_inline(dispatch_queue_t dq, void *ctxt,
 	// Global concurrent queues and queues bound to non-dispatch threads
 	// always fall into the slow case, see DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE
 	
-	// 死锁
+	// 死锁_dq_state_drain_locked_by
 	if (unlikely(!_dispatch_queue_try_acquire_barrier_sync(dl, tid))) {
 		return _dispatch_sync_f_slow(dl, ctxt, func, DC_FLAG_BARRIER, dl,
 				DC_FLAG_BARRIER | dc_flags);
+		
 	}
 
 	if (unlikely(dl->do_targetq->do_targetq)) {
@@ -1782,12 +1785,14 @@ _dispatch_sync_f_inline(dispatch_queue_t dq, void *ctxt,
 		dispatch_function_t func, uintptr_t dc_flags)
 {
 	
-	// 串行 来到这里
-	//
+	// width=1就是串行
+	// 同步串行
 	if (likely(dq->dq_width == 1)) {
+		//说明串行类似栅栏函数
 		return _dispatch_barrier_sync_f(dq, ctxt, func, dc_flags);
 	}
 
+	// 同步并发
 	if (unlikely(dx_metatype(dq) != _DISPATCH_LANE_TYPE)) {
 		DISPATCH_CLIENT_CRASH(0, "Queue type doesn't support dispatch_sync");
 	}
@@ -1795,6 +1800,7 @@ _dispatch_sync_f_inline(dispatch_queue_t dq, void *ctxt,
 	dispatch_lane_t dl = upcast(dq)._dl;
 	// Global concurrent queues and queues bound to non-dispatch threads
 	// always fall into the slow case, see DISPATCH_ROOT_QUEUE_STATE_INIT_VALUE
+	
 	if (unlikely(!_dispatch_queue_try_reserve_sync_width(dl))) {
 		return _dispatch_sync_f_slow(dl, ctxt, func, 0, dl, dc_flags);
 	}
@@ -2606,13 +2612,13 @@ _dispatch_lane_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 		dispatch_queue_t tq, bool legacy)
 {
 
+	//dqai是分水岭
 	dispatch_queue_attr_info_t dqai = _dispatch_queue_attr_to_info(dqa);
 
 	//
-	// Step 1: Normalize arguments (qos, overcommit, tq)
+	// 第一步: 参数设置 (qos, overcommit, tq)
 	//
 	
-	o
 	//lable:队列名称，反域名法
 	//dqa：队列的属性，决定串行还是并发，null为串行
 	//tq：要执行block块的目标队列，默认是DISPATCH_TARGET_QUEUE_DEFAULT，设置为当前分派队列
@@ -2636,6 +2642,7 @@ _dispatch_lane_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 		}
 	}
 
+	//tq大部分情况是不存在的，直接来到最后一个else
 	if (tq && dx_type(tq) == DISPATCH_QUEUE_GLOBAL_ROOT_TYPE) {
 		// Handle discrepancies between attr and target queue, attributes win
 		if (overcommit == _dispatch_queue_attr_overcommit_unspecified) {
@@ -2657,6 +2664,7 @@ _dispatch_lane_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 					"and use this kind of target queue");
 		}
 	} else {
+		//设置overcommit
 		if (overcommit == _dispatch_queue_attr_overcommit_unspecified) {
 			// Serial queues default to overcommit!
 			overcommit = dqai.dqai_concurrent ?
@@ -2665,6 +2673,7 @@ _dispatch_lane_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 		}
 	}
 	if (!tq) {
+		//模版创建tq
 		tq = _dispatch_get_root_queue(
 				qos == DISPATCH_QOS_UNSPECIFIED ? DISPATCH_QOS_DEFAULT : qos, // 4
 				overcommit == _dispatch_queue_attr_overcommit_enabled)->_as_dq; // 1 2
@@ -2674,7 +2683,7 @@ _dispatch_lane_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 	}
 
 	//
-	// Step 2: Initialize the queue
+	// 第二步: 初始化
 	//
 
 	if (legacy) {
@@ -2716,7 +2725,6 @@ _dispatch_lane_create_with_target(const char *label, dispatch_queue_attr_t dqa,
 			sizeof(struct dispatch_lane_s));
 	
 	// 构造方法
-		
 	_dispatch_queue_init(dq, dqf, dqai.dqai_concurrent ?
 			DISPATCH_QUEUE_WIDTH_MAX : 1, DISPATCH_QUEUE_ROLE_INNER |
 			(dqai.dqai_inactive ? DISPATCH_QUEUE_INACTIVE : 0));
@@ -5523,11 +5531,13 @@ _dispatch_debug_root_queue(dispatch_queue_class_t dqu, const char *str)
 
 DISPATCH_NOINLINE
 static void
+// n = 1 ， floor = 0
 _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 {
 	int remaining = n;
 	int r = ENOSYS;
 
+	//队列初始化
 	_dispatch_root_queues_init();
 	_dispatch_debug_root_queue(dq, __func__);
 	_dispatch_trace_runtime_event(worker_request, dq, (uint64_t)n);
@@ -5559,6 +5569,14 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 
 	bool overcommit = dq->dq_priority & DISPATCH_PRIORITY_FLAG_OVERCOMMIT;
 	if (overcommit) {
+		/*_os_atomic_c11_op((p), (v), m, add, +)
+		 
+		#define _os_atomic_c11_op(p, v, m, o, op) \
+		({ _os_atomic_basetypeof(p) _v = (v), _r = \
+		atomic_fetch_##o##_explicit(_os_atomic_c11_atomic(p), _v, \
+		memory_order_##m); (typeof(_r))(_r op _v); })*/
+
+		//这等于上面的宏定义
 		os_atomic_add2o(dq, dgq_pending, remaining, relaxed);
 	} else {
 		if (!os_atomic_cmpxchg2o(dq, dgq_pending, 0, remaining, relaxed)) {
@@ -5568,6 +5586,10 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 		}
 	}
 
+	//can_request：能请求的线程数
+	//t_count：线程池大小
+	//remaining：剩下的
+	
 	int can_request, t_count;
 	// seq_cst with atomic store to tail <rdar://problem/16932833>
 	t_count = os_atomic_load2o(dq, dgq_thread_pool_size, ordered);
@@ -5610,6 +5632,7 @@ _dispatch_root_queue_poke_slow(dispatch_queue_global_t dq, int n, int floor)
 
 DISPATCH_NOINLINE
 void
+// n = 1 ， floor = 0
 _dispatch_root_queue_poke(dispatch_queue_global_t dq, int n, int floor)
 {
 	if (!_dispatch_queue_class_probe(dq)) {
@@ -6074,6 +6097,11 @@ _dispatch_root_queue_push(dispatch_queue_global_t rq, dispatch_object_t dou,
 			dou = old_dou;
 		}
 	}
+	
+	//rq:指定执行任务的队列
+	//dou：当前线程 TSD 中绑定的 queue.也就是当前线程正在执行任务的queue
+	//qos：优先级
+	
 #endif
 #if HAVE_PTHREAD_WORKQUEUE_QOS
 	if (_dispatch_root_queue_push_needs_override(rq, qos)) {
